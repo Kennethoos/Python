@@ -1,58 +1,113 @@
+#coding=utf-8
 
 import os
+import base64, quopri
+import time
 import email
 from email.parser import Parser
 from email.header import decode_header
-from email.utils import parseaddr
+from email.utils import *
 
-def download_attachment(msg, indent=0):
+
+
+def _decode_str(s):
+    _is_multipalLines = s.find('\n')
+    # single line
+    if _is_multipalLines < 0:
+        return _decode_single_line(s)
+    #multipal lines
+    else:
+        return _decode_multipal_line(s)
+
+
+
+def _decode_single_line(s):
+    if s[0] == '=':
+            _charset=s.split('?')[1]
+            _code=s.split('?')[2]
+            _str=s.split('?')[3]
+            #print '_charset is:%s, _code is:%s, _str is:%s' % (_charset, _code, _str)
+            if _code=='B':
+                _decodedStr=base64.decodestring(_str)
+            elif _code=='Q':
+                _decodedStr=quopri.decodestring(_str)
+            return _decodedStr
+    else:
+        return s
+
+def _decode_multipal_line(s):
+    _stripedLines=''
+    _multipal_lines = s.split('\n')
+    _lineCount = len(_multipal_lines)
+    _index = 0
+    #print 'LINE COUNT IS : %d' % _lineCount
+    while _index < _lineCount:
+        _stripedLines.join(_decode_single_line(_multipal_lines[_index]))
+        _index +=1
+    return _stripedLines
+
+def _saveFile(fileName,msgPart):
     wd = 'c:\\tmp'
-    if indent == 0:
-        for header in ['From', 'To', 'Subject']:
-            value = msg.get(header, '')
-            # if value has a string containing the value of 'From', 'To', or 'Subject'
-            if value:
-                # if in this time of loop header is subject
-                if header=='Subject':
-                    value = decode_str(value)
-                else:
-                    #parseaddr(address) returns a tuple of realname and email address
-                    hdr, addr = parseaddr(value)
-                    name = decode_str(hdr)
-                    value = u'%s <%s>' % (name, addr)
-            print('%s%s: %s' % ('  ' * indent, header, value))
+    os.chdir(wd)
+    _dFilename=_decode_str(fileName)
+    print _dFilename
+    '''
+    f = open(_dFilename, 'wb') # use wb
+        #print 'The file: %s exists!' % _dFilename
+        #f = open('another name','wb')
+    f.write(msgPart)
+    f.close()
+    '''
+    
+
+# Get 'from' header
+def getFrom(msg):
+    _from = msg.__getitem__('From')
+    print _from
+    #if _from:
+        #return _from#base64.decodestring(_from)
+    #else:
+        #print 'Named header is missing!'
+
+def getTo(msg):
+    _to = msg.get('To')
+    if _to:
+        return _to
+    else:
+        print 'Named header is missing!'
+
+def getSubject(msg):
+    _subject = msg.get('Subject')
+    if _subject:
+        return _subject
+    else:
+        print 'Named header is missing!'
+
+# return struct time
+def getDate(msg):
+    _date = msg.get('Date')
+    _timeStamp = time.mktime(parsedate(_date))
+    if _timeStamp:
+        return time.localtime(_timeStamp)
+    else:
+        print 'Named header is missing!'
+
+def print_structure(msg):
     for part in msg.walk():
-        if not part.is_multipart():
+        print part.get_boundary()
+    print '-------END-------'
+
+
+
+# Provide download attachment function
+def download_attachment(msg, indent=0):
+    
+    for part in msg.walk():
+        if part.get_content_maintype()=='application':
             _nameValue = part.get_param('name')
-            if _nameValue:
-                _attachmentName = decode_str(email.Header.Header(_nameValue))
-                print _attachmentName
-                data = part.get_payload(decode=True) # decoding attachment content, save it to data 
-                os.chdir(wd)
-                try:
-                    f = open(_attachmentName, 'wb') # use wb
-                except:
-                    print 'other name'
-                    f = open('aaaa', 'wb')
-                f.write(data)
-                f.close()
-        else:
-            continue
-        print '\n'
+            data = part.get_payload(decode=True) # decoding attachment content, save it to data
+            #print _nameValue
+            _saveFile(_nameValue,data)
 
-def decode_str(s):
-    value, charset = decode_header(s)[0]
-    # if charset!= None
-    if charset:
-        value = value.decode(charset)
-    return value
 
-def guess_charset(msg):
-    charset = msg.get_charset()
-    if charset is None:
-        content_type = msg.get('Content-Type', '').lower()
-        pos = content_type.find('charset=')
-        if pos >= 0:
-            charset = content_type[pos + 8:].strip()
-    return charset
 
