@@ -9,7 +9,7 @@ from email.header import decode_header
 from email.utils import *
 
 
-
+# Inner method, decode a string
 def _decode_str(s):
     _is_multipalLines = s.find('\n')
     # single line
@@ -18,9 +18,8 @@ def _decode_str(s):
     #multipal lines
     else:
         return _decode_multipal_line(s)
-
-
-
+        
+# Inner method, called by _decode_str, deal single line string
 def _decode_single_line(s):
     if s[0] == '=':
             _charset=s.split('?')[1]
@@ -34,7 +33,8 @@ def _decode_single_line(s):
             return _decodedStr
     else:
         return s
-
+        
+# Inner method, called by _decode_str, deal multipal line string, make them a whole line ,then decode
 def _decode_multipal_line(s):
     _stripedLines=''
     _multipal_lines = s.split('\n')
@@ -45,7 +45,10 @@ def _decode_multipal_line(s):
         _stripedLines.join(_decode_single_line(_multipal_lines[_index]))
         _index +=1
     return _stripedLines
-
+    
+# Inner method, called by download_attachment,
+# mainly dealing with file operation
+# Need extension of circumstance that the file already exists
 def _saveFile(fileName,msgPart):
     wd = 'c:\\tmp'
     os.chdir(wd)
@@ -60,7 +63,11 @@ def _saveFile(fileName,msgPart):
     '''
     
 
-# Get 'from' header
+# Get email header info
+# In case that only need to know the basic info of email without 
+# parsing the whole email message
+
+# return string of email sender
 def getFrom(msg):
     _from = msg.__getitem__('From')
     print _from
@@ -96,8 +103,7 @@ def print_structure(msg):
     for part in msg.walk():
         print part.get_boundary()
     print '-------END-------'
-
-
+# get methods end
 
 # Provide download attachment function
 def download_attachment(msg, indent=0):
