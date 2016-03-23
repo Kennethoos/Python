@@ -1,0 +1,187 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Mar 24 02:16:22 2016
+
+@author: kenneth
+"""
+
+import struct
+import decimal
+import datetime
+
+
+def dbfwriter(f, fieldnames, fieldspecs, records):
+    """ Return a string suitable for writing directly to a binary dbf file.
+ 
+    File f should be open for writing in a binary mode.
+ 
+    Fieldnames should be no longer than ten characters and not include \x00.
+    Fieldspecs are in the form (type, size, deci) where
+        type is one of:
+            C for ascii character data
+            M for ascii character memo data (real memo fields not supported)
+            D for datetime objects
+            N for ints or decimal objects
+            L for logical values 'T', 'F', or '?'
+        size is the field width
+        deci is the number of decimal places in the provided decimal object
+    Records can be an iterable over the records (sequences of field values).
+     
+    """
+    # header info
+    ver = 3
+    now = datetime.datetime.now()
+    yr, mon, day = now.year-1900, now.month, now.day
+    numrec = len(records)
+    numfields = len(fieldspecs)
+    lenheader = numfields * 32 + 33
+    lenrecord = sum(field[1] for field in fieldspecs) + 1
+    hdr = struct.pack('<BBBBLHH20x', ver, yr, mon, day, numrec, lenheader, lenrecord)
+    f.write(hdr)
+                       
+    # field specs
+    for name, (typ, size, deci) in itertools.izip(fieldnames, fieldspecs):
+        name = name.ljust(11, '\x00')
+        fld = struct.pack('<11sc4xBB14x', name, typ, size, deci)
+        f.write(fld)
+ 
+    # terminator
+    f.write('\r')
+ 
+    # records
+    for record in records:
+        f.write(' ')                        # deletion flag
+        for (typ, size, deci), value in itertools.izip(fieldspecs, record):
+            if typ == "N":
+                value = str(value).rjust(size, ' ')
+            elif typ == 'D':
+                value = value.strftime('%Y%m%d')
+            elif typ == 'L':
+                value = str(value)[0].upper()
+            else:
+                value = str(value)[:size].ljust(size, ' ')
+            assert len(value) == size
+            f.write(value)
+ 
+    # End of file
+    f.write('\x1A')
+
+
+
+
+
+def dbfreader(f):
+    """
+    xxxx - 4 bytes - unpack in 0, irrelavent
+    L - 4 bytes - number of records
+    H - 2 bytes - lenth(in bytes) of header
+    22x - 22 bytes - unpack in 0, irrelavent
+    
+    all 32 bytes
+    """
+    #numrec是记录的条数
+    #lenheader是DBF文件头的长度
+    # 注意unpack取出来的都是byte类型的
+    numrec, lenheader = struct.unpack('<xxxxLH22x', f.read(32))
+    numfields = (lenheader - 33) // 32
+    
+    #fields是表头信息，表明各表头的名称、字段类型、字段长度、字段精度。
+    #以list形式存在，list的每个元素是tuple，
+    fields = []
+    for fieldno in range(numfields):
+        """
+        11s - 11 characters, name of header - 11 bytes
+        c - 每一项的类型（可能的值有B,C,D,G,N,L,M）  -  1 bytes
+        4x - unpack in 0, irrelavent  -  4 bytes
+        B - 每一项的长度, integer类型  -  1 bytes
+        B - 每条记录的精度  -  1 bytes
+        14x - unpack in 0, irrelavent  -  14 bytes
+        
+        all 32 bytes, on header
+        """
+        b_name, b_typ, size, deci = struct.unpack('<11sc4xBB14x', f.read(32))
+        b_name = b_name.replace(b'\0', b'') # eliminate NULs from string
+        name = bytes.decode(b_name)
+        typ = bytes.decode(b_typ)
+        fields.append((name, typ, size, deci))
+        
+    terminator = f.read(1)
+    assert terminator == b'\r'
+    #assert terminator == b'\x00'
+    #至此DBF文件头处理完毕，最后一位是byte格式的\r,如果不是，则报错。
+    
+    #每条记录前都有一个删除标志，若被删除，则该位为"*"，否则为其他
+    fields.insert(0, ('DeletionFlag', 'C', 1, 0))
+    """
+    fieldinfo是个tuple，第3项是表示字段长度
+    unpack的fmt是字段长度位的字符串，即fmt=8s,或者50s，以每个表头的长度为准，
+    拼起来就是每条records的长度
+    """
+    fmt = ''.join(['%ds' % fieldinfo[2] for fieldinfo in fields])
+    fmtsiz = struct.calcsize(fmt)
+    
+    result = []  #如果没被删除的record，初始化一个result变量，用于存放修正后的record值
+    #循环遍历每条records
+    for i in range(numrec):
+        record = []
+        b_record = struct.unpack(fmt, f.read(fmtsiz))
+        for element in b_record:
+            record.append(bytes.decode(element,'gb18030'))
+        if record[0] == '*':
+            continue #遇到被删除的数据，查看下一条记录
+        # zip，每次取出fields和record的相应元素，把表头和每条记录的字段对应起来
+        # 形成一个迭代器，迭代器的每个元素包含两部分内容
+        # 一部分是(name, typ, size, deci)，另一部分是该条记录的value
+        # 这个zip相当于提取出了一张小表，只包含表头和当前record
+        
+        #这个循环相当于对小表的每个字段开始进行遍历，每次取出表头和字段值
+        # 根据表头对相应的值进行修正
+        # 最后形成result数组，存放修正后的该条record所有值，不包含删除标志
+        # 由于最后又yield，故该类是可以迭代的
+        for (name, typ, size, deci), value in zip(fields, record):
+            #print((name, typ, size, deci), value)
+            if name == 'DeletionFlag':
+                continue  #取删除位，忽略
+            if typ == "N":
+                value = value.replace('\0', '').lstrip()#如果是数值，去掉结束符
+                if value == '':
+                    value = 0 #如果该字段是数值，且为空，置为0
+                elif deci:
+                    value = decimal.Decimal(value) #如果有精度要求，将该值构造成一个decimal对象
+                else:
+                    value = int(value) #如果精度没有要求，将之强制转换成int类型
+            elif typ == 'D': #如果该字段是日期
+                y, m, d = int(value[:4]), int(value[4:6]), int(value[6:8])
+                value = datetime.date(y, m, d) #将该值转换成datetime类型
+            elif typ == 'L': #如果该字段是逻辑型（？YyNnTtFf,?表示没有初始化）
+                # The expression x and y first evaluates x; if x is false, its value is returned; otherwise, y is evaluated and the resulting value is returned.
+                # The expression x or y first evaluates x; if x is true, its value is returned; otherwise, y is evaluated and the resulting value is returned.
+                # 如果value的值在 'YyTt'中，这个结果与and进行判断，返回字符T
+                # 否则，第一个括号返回false，这个结果与or进行判断，不取第一个括号的值
+                # 开始判断第二个括号
+                value = (value in 'YyTt' and 'T') or (value in 'NnFf' and 'F') or '?'
+            elif typ == 'F': #如果该字段是Float类型，将value转换成float型
+                value = float(value)
+            result.append(value)
+            #print(result)
+        yield result
+
+
+# -------------------------------------------------------
+# Example calls
+if __name__ == '__main__':
+    #import sys, csv
+    #from cStringIO import StringIO
+    #from operator import itemgetter
+    
+    filename = 'DAYBAL.DBF'
+    f = open(filename, 'rb')
+    for i in dbfreader(f):
+        print(i)
+        break
+    #db = list(dbfreader(f))
+    #f.close()
+    #for record in db:
+    #    print(record)
+    #fieldnames, fieldspecs, records = db[0], db[1], db[2:]
+    #print(db[1])
