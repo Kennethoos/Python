@@ -1,0 +1,67 @@
+#include <stdio.h>
+#include <string.h>
+#pragma pack(push,1)
+typedef struct HeadOfDbf {
+    unsigned char  tab;
+    unsigned char  year;
+    unsigned char  month;
+    unsigned char  day;
+    unsigned int   recnum;
+    unsigned short offset;
+    unsigned short reclen;
+    char  save[20];
+} InfoOfDbfHead;
+typedef struct HeadOfDbfIndex {
+    unsigned char fname[11];
+    unsigned char type;
+    int  addr;
+    unsigned char width;
+    unsigned char doc;
+    char save[14];
+} InfoOfDbfIndex;
+#pragma pack(pop)
+InfoOfDbfHead      Head;
+InfoOfDbfIndex     Index[48];
+int offset[48],n;
+FILE            *fdbf;
+unsigned int    rec,field,fieldnum,i;
+char buf[256];
+//-------------------------------------------------------
+int main(int argc,char *argv[])
+{
+    if (argc==1) {
+        fprintf(stderr,"Usage:\n%s filename[.DBF]",argv[0]);
+        return 1;
+    }
+    strcpy(buf,argv[1]);
+    if (buf[strlen(buf)-4]!='.') strcat(buf,".dbf");
+    if ((fdbf=fopen(buf,"rb"))==NULL) {
+        fprintf(stderr,"Can not fopen file [%s]!",buf);
+        return 2;
+    }
+    fseek(fdbf,0L,SEEK_SET);
+    fread(&Head,sizeof(InfoOfDbfHead),1,fdbf);
+    fieldnum=(Head.offset-1)/32-1;
+ 
+    fseek(fdbf,32,SEEK_SET);
+    n=0;
+    printf("|");
+    for(i=0;i<fieldnum;i++) {
+        offset[i]=n;
+        fread(&Index[i],sizeof(InfoOfDbfIndex),1,fdbf);
+        printf("%-*s|",Index[i].width,Index[i].fname);
+        n=n+Index[i].width;
+    }
+ 
+    for (rec=0;rec<Head.recnum;rec++) {
+        printf("\n|");
+        for (field=0;field<fieldnum;field++) {
+            fseek(fdbf,(long)(Head.offset+1+rec*(long)Head.reclen+offset[field]),SEEK_SET);
+            fread(buf,1,Index[field].width,fdbf);
+            buf[Index[field].width]=0;
+            printf("%s|",buf);
+        }
+    }
+    fclose(fdbf);
+    return 0;
+}
