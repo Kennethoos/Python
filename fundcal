@@ -1,0 +1,56 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Mar 28 16:11:05 2016
+
+@author: kenneth
+"""
+
+import dbfOperation
+
+
+
+# -------------------------------------------------------
+# Example calls
+if __name__ == '__main__':
+    #import sys, csv
+    #from cStringIO import StringIO
+    #from operator import itemgetter
+    
+    filename = 'DAYBAL.DBF'
+    f = open(filename, 'rb')
+    
+    """
+    recordDict = dbfOperation.dbfreader(f)
+    lenofRecordDict = len(recordDict)
+    
+    kmList = []
+    
+    for i in range(lenofRecordDict):
+        kmList.append(recordDict[i][2])
+    print(kmList)
+    """
+    
+    """
+    dbfFields = []
+    for element in dbfOperation.readFields(f):
+        dbfFields.append(element[0])
+    
+    print(dbfFields)
+    
+
+    """    
+    
+    productNV = {}
+    recordDict = dbfOperation.dbfreader(f)
+    lenofRecordDict = len(recordDict)
+    
+    for index in range(lenofRecordDict):
+        pdtCode = recordDict[index][1]       
+        if not(pdtCode in productNV):
+            productNV[pdtCode] = [index]
+        elif not(index in productNV[pdtCode]):
+            productNV[pdtCode].append(index)
+        
+    
+   
+    f.close()
