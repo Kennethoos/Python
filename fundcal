@@ -5,7 +5,7 @@ Created on Mon Mar 28 16:11:05 2016
 @author: kenneth
 """
 
-import dbfOperation
+import dbfHandlerSimpleVer
 
 
 
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     f = open(filename, 'rb')
     
     """
-    recordDict = dbfOperation.dbfreader(f)
+    recordDict = dbfHandlerSimpleVer.dbfreader(f)
     lenofRecordDict = len(recordDict)
     
     kmList = []
@@ -30,27 +30,106 @@ if __name__ == '__main__':
     print(kmList)
     """
     
+
     """
     dbfFields = []
-    for element in dbfOperation.readFields(f):
-        dbfFields.append(element[0])
+    for element in dbfHandlerSimpleVer.readFields(f):
+        dbfFields.append(element[1])
     
     print(dbfFields)
+    """
     
 
-    """    
     
-    productNV = {}
-    recordDict = dbfOperation.dbfreader(f)
+
+    
+    """
+    字典，key是每个产品代码，value是该代码对应的记录序号，从0开始
+    """
+    
+
+    pdtRcd = {}
+    
+    recordDict = dbfHandlerSimpleVer.dbfreader(f)
     lenofRecordDict = len(recordDict)
     
+    kmList1 = [] # 1级科目，4位，保存字符型
+    kmList2 = [] # 2级科目，6位，保存字符型
+    kmList3 = [] # 3级科目，8位，保存字符型
+    kmList4 = [] # 4级科目，14位，保存字符型
+    
     for index in range(lenofRecordDict):
-        pdtCode = recordDict[index][1]       
-        if not(pdtCode in productNV):
-            productNV[pdtCode] = [index]
-        elif not(index in productNV[pdtCode]):
-            productNV[pdtCode].append(index)
+        pdtCode = recordDict[index][1]
+        kmCode = str(int(recordDict[index][2]))
         
+        if not(pdtCode in pdtRcd):
+            pdtRcd[pdtCode] = [index]
+        elif not(index in pdtRcd[pdtCode]):
+            pdtRcd[pdtCode].append(index)
+        
+        if len(kmCode) == 4:
+            kmList1.append(kmCode)
+        elif len(kmCode) == 6:
+            kmList2.append(kmCode)
+        elif len(kmCode) == 8:
+            kmList3.append(kmCode)
+        else:
+            kmList4.append(kmCode)
+
+    
+            
+    """
+    productCalInfo 是一个字典，key是产品代码，value是所需要计算的各种值
+    pCode，保存所有产品代码，list
+    pCalInfo，保存每个代码所需要计算的值名称
+    pCalVallue，保存每个产品代码对应的需要计算的值
+    """
+    
+    productCalInfo = {}
+    pCode = []
+    pCalValue = [0,0,0,0,0,0,0]
+    pCalInfo = ['custodyAcnt', 'ReserveAcnt', "AstTV", 'AstNV', 'cashAvlb','cashRatio', 'fee']
+    
+    
+    #计算custodyAcnt
+    
+    for pdt, indexList in pdtRcd.items():
+        tmp0 = 0
+        tmp1 = 0
+        tmp2 = 0
+        tmp3 = 0
+        tmp6 = 0
+        for index in indexList:
+            kmCode = str(int(recordDict[index][2]))
+            if kmCode[0:4] == '1002':
+                tmp0 += recordDict[index][5]
+            if kmCode[0:4] == '1031':
+                tmp1 += recordDict[index][5]
+            if kmCode[0] == '1':
+                tmp2 += recordDict[index][5]
+            if kmCode[0] == '4':
+                tmp3 += recordDict[index][5]
+            if kmCode[0:4] =='6408':
+                tmp6 += recordDict[index][5]
+            
+                
+        pCalValue[0] = tmp0
+        pCalValue[1] = tmp1
+        pCalValue[2] = tmp2
+        pCalValue[3] = tmp3
+        pCalValue[4] = tmp0 + tmp1
+        pCalValue[5] = pCalValue[4]/pCalValue[3]
+        pCalValue[6] = tmp6
+        
+        productCalInfo[pdt] = pCalValue
+            
+                
+    print(productCalInfo['J00001'])
+            
+            
+    
+    
     
    
     f.close()
+
